@@ -36,7 +36,7 @@ async function run() {
       res.send(users);
     });
 
-    // writer and reader api
+    // writer and reader role update
     app.patch('/api/admin/update-role/:id', async (req, res) => {
       const id = req.params.id;
       const { role } = req.body;
@@ -45,6 +45,24 @@ async function run() {
       const result = await userCollection.updateOne(filter, updateDoc);
       res.send(result);
     });
+
+    // adding new book
+    app.post('/api/writer/add-book', async (req, res) => {
+      const book = req.body; 
+      const result = await bookCollection.insertOne(book);
+      res.send(result);
+    });
+    // seeing the one writer's book
+    app.get('/api/writer/my-books/:email', async (req, res) => {
+      const email = req.params.email;
+      const result = await bookCollection.find({ writerEmail: email }).toArray();
+      res.send(result);
+    });
+
+
+
+
+
 
   } catch (error) {
     console.error("Connection Error:", error);
