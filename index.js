@@ -60,7 +60,18 @@ async function run() {
     });
 
 
+    // readers api
 
+    app.get('/api/reader/all-books', async (req, res) => {
+      const result = await bookCollection.find().toArray();
+      res.send(result);
+    });
+    // seeing the one reader's book
+    app.get('/api/reader/book/:id', async (req, res) => {
+      const id = req.params.id;
+      const result = await bookCollection.findOne({ _id: new ObjectId(id) });
+      res.send(result);
+    });
 
 
 
