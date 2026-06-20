@@ -1,12 +1,12 @@
 const express = require('express');
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb'); 
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 require('dotenv').config();
 
 const app = express();
 
-// Middleware
+
 app.use(cors());
 app.use(express.json());
 
@@ -43,7 +43,7 @@ async function run() {
     app.post('/api/admin/add-user', async (req, res) => {
       try {
         const { name, email, password, role } = req.body;
-        const hashedPassword = await bcrypt.hash(password, 10); 
+        const hashedPassword = await bcrypt.hash(password, 10);
 
         const newUser = {
           name,
@@ -102,12 +102,22 @@ async function run() {
       const result = await allBooksCollection.insertOne(book);
       res.send(result);
     });
-
-    // writers own books
+    // --- Writer APIs ---
+    // writers own books seeing
     app.get('/api/writer/my-books/:email', async (req, res) => {
       const email = req.params.email;
       const result = await allBooksCollection.find({ writerEmail: email }).toArray();
       res.send(result);
+    });
+    // delete book (Fixed ObjectId)
+    app.delete('/api/writer/delete-book/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await allBooksCollection.deleteOne({ _id: new ObjectId(id) });
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Invalid ID format" });
+      }
     });
 
     // --- READER APIs ---
