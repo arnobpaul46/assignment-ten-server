@@ -1,9 +1,12 @@
 const express = require('express');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb'); 
 const cors = require('cors');
+const bcrypt = require('bcrypt');
 require('dotenv').config();
 
 const app = express();
+
+// Middleware
 app.use(cors());
 app.use(express.json());
 
@@ -16,80 +19,127 @@ async function run() {
     await client.connect();
     const db = client.db("fableDB");
 
-
-    // Collection 
-    const bookCollection = db.collection("featured_books");
+    // db collections
+    const featuredCollection = db.collection("featured_books");
     const userCollection = db.collection("user");
+    const allBooksCollection = db.collection("all_books");
 
+    console.log("✅ MongoDB Atlas Connected & APIs Ready!");
 
-
-
-    console.log("MongoDB Atlas Connected!");
-    // home slider api
+    // --- PUBLIC API ---
     app.get('/api/featured-books', async (req, res) => {
-      const result = await bookCollection.find({ isFeatured: true }).toArray();
+      const result = await featuredCollection.find({ isFeatured: true }).toArray();
       res.send(result);
     });
-    // admin api
+
+    // --- ADMIN APIs ---
+
+    // seeing all users
     app.get('/api/admin/users', async (req, res) => {
       const users = await userCollection.find().toArray();
       res.send(users);
     });
-    // user delete api
+    // add new user 
+    app.post('/api/admin/add-user', async (req, res) => {
+      try {
+        const { name, email, password, role } = req.body;
+        const hashedPassword = await bcrypt.hash(password, 10); 
+
+        const newUser = {
+          name,
+          email,
+          password: hashedPassword,
+          role: role || 'reader',
+          emailVerified: true,
+          image: "",
+          createdAt: new Date()
+        };
+
+        const result = await userCollection.insertOne(newUser);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Error adding user" });
+      }
+    });
+
+
+    // delete user (Fixed ObjectId)
     app.delete('/api/admin/delete-user/:id', async (req, res) => {
-      const id = req.params.id;
-      const result = await db.collection("user").deleteOne({ _id: new ObjectId(id) });
-      res.send(result);
+      try {
+        const id = req.params.id;
+        const result = await userCollection.deleteOne({ _id: new ObjectId(id) });
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Invalid ID format" });
+      }
     });
-    // admin,writer and reader role update
+
+    // update user role (Fixed ObjectId)
     app.patch('/api/admin/update-role/:id', async (req, res) => {
-      const id = req.params.id;
-      const { newRole } = req.body;
-      const result = await db.collection("user").updateOne(
-        { _id: new ObjectId(id) },
-        { $set: { role: newRole } }
-      );
-      res.send(result);
+      try {
+        const id = req.params.id;
+        const { newRole } = req.body;
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = { $set: { role: newRole } };
+        const result = await userCollection.updateOne(filter, updateDoc);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Update failed" });
+      }
     });
-    // seeing all the books
+
+    // seeing all books (for admin panel)
     app.get('/api/admin/all-books', async (req, res) => {
-      const books = await db.collection("all_books").find().toArray();
+      const books = await allBooksCollection.find().toArray();
       res.send(books);
     });
-    
-    // adding new book
+
+    // --- WRITER APIs ---
+
+    // add new book
     app.post('/api/writer/add-book', async (req, res) => {
       const book = req.body;
-      const result = await bookCollection.insertOne(book);
+      const result = await allBooksCollection.insertOne(book);
       res.send(result);
     });
-    // seeing the one writer's book
+
+    // writers own books
     app.get('/api/writer/my-books/:email', async (req, res) => {
       const email = req.params.email;
-      const result = await bookCollection.find({ writerEmail: email }).toArray();
+      const result = await allBooksCollection.find({ writerEmail: email }).toArray();
       res.send(result);
     });
 
+    // --- READER APIs ---
 
-    // readers api
-
+    // all published books
     app.get('/api/reader/all-books', async (req, res) => {
-      const result = await bookCollection.find().toArray();
+      const result = await allBooksCollection.find().toArray();
       res.send(result);
     });
-    // seeing the one reader's book
+
+    // single book
     app.get('/api/reader/book/:id', async (req, res) => {
-      const id = req.params.id;
-      const result = await bookCollection.findOne({ _id: new ObjectId(id) });
-      res.send(result);
+      try {
+        const id = req.params.id;
+        const result = await allBooksCollection.findOne({ _id: new ObjectId(id) });
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Book not found" });
+      }
     });
-
-
 
   } catch (error) {
-    console.error("Connection Error:", error);
+    console.error(" Connection Error:", error);
   }
 }
+
 run().catch(console.dir);
 
-app.listen(process.env.PORT, () => console.log(" Server running on port 5000"));
+// Root Route
+app.get('/', (req, res) => {
+  res.send('Fable Server is running...');
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(` Server running on port ${PORT}`));
