@@ -35,7 +35,12 @@ async function run() {
       const users = await userCollection.find().toArray();
       res.send(users);
     });
-
+    // user delete api
+    app.delete('/api/admin/delete-user/:id', async (req, res) => {
+      const id = req.params.id;
+      const result = await db.collection("user").deleteOne({ _id: new ObjectId(id) });
+      res.send(result);
+    });
     // writer and reader role update
     app.patch('/api/admin/update-role/:id', async (req, res) => {
       const id = req.params.id;
@@ -48,7 +53,7 @@ async function run() {
 
     // adding new book
     app.post('/api/writer/add-book', async (req, res) => {
-      const book = req.body; 
+      const book = req.body;
       const result = await bookCollection.insertOne(book);
       res.send(result);
     });
