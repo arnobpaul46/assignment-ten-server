@@ -41,16 +41,22 @@ async function run() {
       const result = await db.collection("user").deleteOne({ _id: new ObjectId(id) });
       res.send(result);
     });
-    // writer and reader role update
+    // admin,writer and reader role update
     app.patch('/api/admin/update-role/:id', async (req, res) => {
       const id = req.params.id;
-      const { role } = req.body;
-      const filter = { _id: new ObjectId(id) };
-      const updateDoc = { $set: { role: role } };
-      const result = await userCollection.updateOne(filter, updateDoc);
+      const { newRole } = req.body;
+      const result = await db.collection("user").updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { role: newRole } }
+      );
       res.send(result);
     });
-
+    // seeing all the books
+    app.get('/api/admin/all-books', async (req, res) => {
+      const books = await db.collection("all_books").find().toArray();
+      res.send(books);
+    });
+    
     // adding new book
     app.post('/api/writer/add-book', async (req, res) => {
       const book = req.body;
