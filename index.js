@@ -103,6 +103,11 @@ async function run() {
         res.status(500).send({ message: "Blocking failed" });
       }
     });
+// admin see all books
+    app.get('/api/admin/all-books', async (req, res) => {
+      const books = await allBooksCollection.find().toArray();
+      res.send(books);
+    });
 
     // ==========================================
     // 3. WRITER APIs
