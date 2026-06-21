@@ -183,9 +183,11 @@ async function run() {
         res.status(500).send({ message: "Update failed" });
       }
     });
-
-
     
+    // update user sales
+    app.get('/api/writer/sales/:email', async (req, res) => {
+      res.send([]);
+    });
     // ==========================================
     // 4. READER APIs
     // ==========================================
