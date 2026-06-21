@@ -168,6 +168,24 @@ async function run() {
         res.status(500).send({ message: "Book update failed" });
       }
     });
+
+     //  update user profile
+    app.patch('/api/user/update-profile/:email', async (req, res) => {
+      try {
+        const email = req.params.email;
+        const { name, image } = req.body;
+        const result = await userCollection.updateOne(
+          { email: email },
+          { $set: { name, image } }
+        );
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Update failed" });
+      }
+    });
+
+
+    
     // ==========================================
     // 4. READER APIs
     // ==========================================
