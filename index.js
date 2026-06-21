@@ -89,6 +89,21 @@ async function run() {
       }
     });
 
+      // toggle user block
+    app.patch('/api/admin/toggle-block/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { isBlocked } = req.body;
+        const result = await userCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { isBlocked: isBlocked } }
+        );
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Blocking failed" });
+      }
+    });
+
     // ==========================================
     // 3. WRITER APIs
     // ==========================================
