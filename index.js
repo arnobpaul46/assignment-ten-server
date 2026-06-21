@@ -6,7 +6,6 @@ require('dotenv').config();
 
 const app = express();
 
-
 app.use(cors());
 app.use(express.json());
 
@@ -26,7 +25,6 @@ async function run() {
     const purchaseCollection = db.collection("purchases");
     const bookmarkCollection = db.collection("bookmarks");
 
-
     console.log("✅ Fable Server: MongoDB Connected & APIs Ready!");
 
     // ==========================================
@@ -40,14 +38,11 @@ async function run() {
     // ==========================================
     // 2. ADMIN APIs
     // ==========================================
-
-    // all users
     app.get('/api/admin/users', async (req, res) => {
       const users = await userCollection.find().toArray();
       res.send(users);
     });
 
-    // add new user form admin and block user
     app.post('/api/admin/add-user', async (req, res) => {
       try {
         const { name, email, password, role } = req.body;
@@ -66,18 +61,16 @@ async function run() {
       }
     });
 
-    // delete user
     app.delete('/api/admin/delete-user/:id', async (req, res) => {
       try {
         const id = req.params.id;
         const result = await userCollection.deleteOne({ _id: new ObjectId(id) });
         res.send(result);
       } catch (error) {
-        res.status(500).send({ message: "Invalid ID format" });
+        res.status(500).send({ message: "Invalid ID" });
       }
     });
 
-    // update user role
     app.patch('/api/admin/update-role/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -92,7 +85,6 @@ async function run() {
       }
     });
 
-    // toggle user block
     app.patch('/api/admin/toggle-block/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -106,7 +98,7 @@ async function run() {
         res.status(500).send({ message: "Blocking failed" });
       }
     });
-    // admin see all books
+
     app.get('/api/admin/all-books', async (req, res) => {
       const books = await allBooksCollection.find().toArray();
       res.send(books);
@@ -115,22 +107,18 @@ async function run() {
     // ==========================================
     // 3. WRITER APIs
     // ==========================================
-
-    // add new book
     app.post('/api/writer/add-book', async (req, res) => {
       const book = req.body;
       const result = await allBooksCollection.insertOne(book);
       res.send(result);
     });
 
-    // see all books of writer
     app.get('/api/writer/my-books/:email', async (req, res) => {
       const email = req.params.email;
       const result = await allBooksCollection.find({ writerEmail: email }).toArray();
       res.send(result);
     });
 
-    // delete book
     app.delete('/api/writer/delete-book/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -141,7 +129,6 @@ async function run() {
       }
     });
 
-    // update book status
     app.patch('/api/writer/update-status/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -156,7 +143,6 @@ async function run() {
       }
     });
 
-    // update book
     app.patch('/api/writer/update-book/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -172,7 +158,13 @@ async function run() {
       }
     });
 
-    //  update user profile
+    app.get('/api/writer/sales/:email', async (req, res) => {
+      res.send([]);
+    });
+
+    // ==========================================
+    // 4. USER & READER APIs
+    // ==========================================
     app.patch('/api/user/update-profile/:email', async (req, res) => {
       try {
         const email = req.params.email;
@@ -183,25 +175,15 @@ async function run() {
         );
         res.send(result);
       } catch (error) {
-        res.status(500).send({ message: "Update failed" });
+        res.status(500).send({ message: "Profile update failed" });
       }
     });
 
-    // update user sales
-    app.get('/api/writer/sales/:email', async (req, res) => {
-      res.send([]);
-    });
-    // ==========================================
-    // 4. READER APIs
-    // ==========================================
-
-    // see all books of reader
     app.get('/api/reader/all-books', async (req, res) => {
       const result = await allBooksCollection.find({ status: "Published" }).toArray();
       res.send(result);
     });
 
-    // see book of reader
     app.get('/api/reader/book/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -212,14 +194,12 @@ async function run() {
       }
     });
 
-    //  add purchase
     app.post('/api/reader/purchase', async (req, res) => {
       const purchaseData = req.body;
       const result = await purchaseCollection.insertOne(purchaseData);
       res.send(result);
     });
 
-    // toggle bookmark 
     app.post('/api/reader/toggle-bookmark', async (req, res) => {
       const { bookId, userEmail, title, image, author } = req.body;
       const exists = await bookmarkCollection.findOne({ bookId, userEmail });
@@ -231,20 +211,15 @@ async function run() {
       res.send({ message: "Added", status: true });
     });
 
-
-    // see my library
     app.get('/api/reader/my-library/:email', async (req, res) => {
       const result = await purchaseCollection.find({ userEmail: req.params.email }).toArray();
       res.send(result);
     });
 
-    // see my bookmarks
     app.get('/api/reader/my-bookmarks/:email', async (req, res) => {
       const result = await bookmarkCollection.find({ userEmail: req.params.email }).toArray();
       res.send(result);
     });
-
-
 
   } catch (error) {
     console.error(" Connection Error:", error);
@@ -253,7 +228,6 @@ async function run() {
 
 run().catch(console.dir);
 
-// Root Route
 app.get('/', (req, res) => {
   res.send('Fable Server is running smoothly...');
 });
