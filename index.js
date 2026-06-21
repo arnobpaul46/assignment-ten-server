@@ -232,6 +232,17 @@ async function run() {
     });
 
 
+    // see my library
+    app.get('/api/reader/my-library/:email', async (req, res) => {
+      const result = await purchaseCollection.find({ userEmail: req.params.email }).toArray();
+      res.send(result);
+    });
+
+    // see my bookmarks
+    app.get('/api/reader/my-bookmarks/:email', async (req, res) => {
+      const result = await bookmarkCollection.find({ userEmail: req.params.email }).toArray();
+      res.send(result);
+    });
 
 
 
