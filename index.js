@@ -63,7 +63,17 @@ async function run() {
       }
     });
 
-    
+    // delete user
+    app.delete('/api/admin/delete-user/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await userCollection.deleteOne({ _id: new ObjectId(id) });
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Invalid ID format" });
+      }
+    });
+
 
     // ==========================================
     // 3. WRITER APIs
