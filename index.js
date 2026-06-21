@@ -23,6 +23,9 @@ async function run() {
     const featuredCollection = db.collection("featured_books");
     const userCollection = db.collection("user");
     const allBooksCollection = db.collection("all_books");
+    const purchaseCollection = db.collection("purchases");
+    const bookmarkCollection = db.collection("bookmarks");
+
 
     console.log("✅ Fable Server: MongoDB Connected & APIs Ready!");
 
@@ -52,7 +55,7 @@ async function run() {
         const newUser = {
           name, email, password: hashedPassword,
           role: role || 'reader',
-          isBlocked: false, 
+          isBlocked: false,
           emailVerified: true, image: "",
           createdAt: new Date()
         };
@@ -74,7 +77,7 @@ async function run() {
       }
     });
 
-     // update user role
+    // update user role
     app.patch('/api/admin/update-role/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -89,7 +92,7 @@ async function run() {
       }
     });
 
-      // toggle user block
+    // toggle user block
     app.patch('/api/admin/toggle-block/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -103,7 +106,7 @@ async function run() {
         res.status(500).send({ message: "Blocking failed" });
       }
     });
-// admin see all books
+    // admin see all books
     app.get('/api/admin/all-books', async (req, res) => {
       const books = await allBooksCollection.find().toArray();
       res.send(books);
@@ -128,7 +131,7 @@ async function run() {
     });
 
     // delete book
-         app.delete('/api/writer/delete-book/:id', async (req, res) => {
+    app.delete('/api/writer/delete-book/:id', async (req, res) => {
       try {
         const id = req.params.id;
         const result = await allBooksCollection.deleteOne({ _id: new ObjectId(id) });
@@ -138,7 +141,7 @@ async function run() {
       }
     });
 
-     // update book status
+    // update book status
     app.patch('/api/writer/update-status/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -152,8 +155,8 @@ async function run() {
         res.status(500).send({ message: "Status update failed" });
       }
     });
-  
- // update book
+
+    // update book
     app.patch('/api/writer/update-book/:id', async (req, res) => {
       try {
         const id = req.params.id;
@@ -169,7 +172,7 @@ async function run() {
       }
     });
 
-     //  update user profile
+    //  update user profile
     app.patch('/api/user/update-profile/:email', async (req, res) => {
       try {
         const email = req.params.email;
@@ -183,7 +186,7 @@ async function run() {
         res.status(500).send({ message: "Update failed" });
       }
     });
-    
+
     // update user sales
     app.get('/api/writer/sales/:email', async (req, res) => {
       res.send([]);
@@ -208,6 +211,14 @@ async function run() {
         res.status(500).send({ message: "Book not found" });
       }
     });
+
+    //  add purchase
+    app.post('/api/reader/purchase', async (req, res) => {
+      const purchaseData = req.body; 
+      const result = await purchaseCollection.insertOne(purchaseData);
+      res.send(result);
+    });
+
 
   } catch (error) {
     console.error(" Connection Error:", error);
