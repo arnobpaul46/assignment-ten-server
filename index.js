@@ -128,6 +128,16 @@ async function run() {
     });
 
     // delete book
+         app.delete('/api/writer/delete-book/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await allBooksCollection.deleteOne({ _id: new ObjectId(id) });
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Delete failed" });
+      }
+    });
+
   
 
     // ==========================================
