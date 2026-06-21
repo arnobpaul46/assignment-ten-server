@@ -214,10 +214,25 @@ async function run() {
 
     //  add purchase
     app.post('/api/reader/purchase', async (req, res) => {
-      const purchaseData = req.body; 
+      const purchaseData = req.body;
       const result = await purchaseCollection.insertOne(purchaseData);
       res.send(result);
     });
+
+    // toggle bookmark 
+    app.post('/api/reader/toggle-bookmark', async (req, res) => {
+      const { bookId, userEmail, title, image, author } = req.body;
+      const exists = await bookmarkCollection.findOne({ bookId, userEmail });
+      if (exists) {
+        await bookmarkCollection.deleteOne({ bookId, userEmail });
+        return res.send({ message: "Removed", status: false });
+      }
+      const result = await bookmarkCollection.insertOne({ bookId, userEmail, title, image, author });
+      res.send({ message: "Added", status: true });
+    });
+
+
+
 
 
   } catch (error) {
