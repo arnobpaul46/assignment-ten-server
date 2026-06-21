@@ -138,6 +138,20 @@ async function run() {
       }
     });
 
+     // update book status
+    app.patch('/api/writer/update-status/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { status } = req.body;
+        const result = await allBooksCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status: status } }
+        );
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Status update failed" });
+      }
+    });
   
 
     // ==========================================
