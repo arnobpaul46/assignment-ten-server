@@ -153,7 +153,21 @@ async function run() {
       }
     });
   
-
+ // update book
+    app.patch('/api/writer/update-book/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updateData = req.body;
+        delete updateData._id;
+        const result = await allBooksCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updateData }
+        );
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Book update failed" });
+      }
+    });
     // ==========================================
     // 4. READER APIs
     // ==========================================
