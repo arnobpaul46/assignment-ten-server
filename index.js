@@ -74,6 +74,20 @@ async function run() {
       }
     });
 
+     // update user role
+    app.patch('/api/admin/update-role/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { newRole } = req.body;
+        const result = await userCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { role: newRole } }
+        );
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Update failed" });
+      }
+    });
 
     // ==========================================
     // 3. WRITER APIs
