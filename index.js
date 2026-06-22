@@ -109,7 +109,7 @@ async function run() {
       const result = await db.collection("purchases").find().toArray();
       res.send(result);
     });
-    
+
     // ==========================================
     // 3. WRITER APIs
     // ==========================================
@@ -165,9 +165,9 @@ async function run() {
     });
 
     app.get('/api/writer/sales/:email', async (req, res) => {
-      res.send([]);
+      const result = await db.collection("purchases").find({ writerEmail: req.params.email }).toArray();
+      res.send(result);
     });
-
     // ==========================================
     // 4. USER & READER APIs
     // ==========================================
