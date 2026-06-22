@@ -110,6 +110,26 @@ async function run() {
       res.send(result);
     });
 
+    app.get('/api/admin/stats', async (req, res) => {
+      try {
+        const totalUsers = await userCollection.countDocuments();
+        const totalBooks = await allBooksCollection.countDocuments();
+        const transactions = await purchaseCollection.find().toArray();
+        const totalRevenue = transactions.reduce((acc, curr) => acc + curr.price, 0);
+
+    
+        const chartData = [
+          { name: 'Jan', sales: 4000 }, { name: 'Feb', sales: 3000 },
+          { name: 'Mar', sales: 5000 }, { name: 'Apr', sales: 4500 },
+          { name: 'May', sales: 6000 }, { name: 'Jun', sales: 7000 },
+        ];
+
+        res.send({ totalUsers, totalBooks, totalRevenue, chartData });
+      } catch (error) {
+        res.status(500).send({ message: "Stats error" });
+      }
+    });
+
     // ==========================================
     // 3. WRITER APIs
     // ==========================================
@@ -234,6 +254,16 @@ async function run() {
       res.send({ isPurchased: !!result });
     });
 
+
+    app.delete('/api/reader/delete-purchase/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await db.collection("purchases").deleteOne({ _id: new ObjectId(id) });
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Failed to remove from library" });
+      }
+    });
 
   } catch (error) {
     console.error(" Connection Error:", error);
