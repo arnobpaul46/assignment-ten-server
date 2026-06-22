@@ -104,6 +104,12 @@ async function run() {
       res.send(books);
     });
 
+
+    app.get('/api/admin/transactions', async (req, res) => {
+      const result = await db.collection("purchases").find().toArray();
+      res.send(result);
+    });
+    
     // ==========================================
     // 3. WRITER APIs
     // ==========================================
