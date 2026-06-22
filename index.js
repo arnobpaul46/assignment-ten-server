@@ -221,6 +221,14 @@ async function run() {
       res.send(result);
     });
 
+
+    app.get('/api/reader/check-purchase', async (req, res) => {
+      const { email, bookId } = req.query;
+      const result = await db.collection("purchases").findOne({ userEmail: email, bookId: bookId });
+      res.send({ isPurchased: !!result });
+    });
+
+
   } catch (error) {
     console.error(" Connection Error:", error);
   }
