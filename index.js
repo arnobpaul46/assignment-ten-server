@@ -13,6 +13,11 @@ const client = new MongoClient(process.env.MONGODB_URI, {
   serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true }
 });
 
+
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+
+
 async function run() {
   try {
     await client.connect();
@@ -117,7 +122,7 @@ async function run() {
         const transactions = await purchaseCollection.find().toArray();
         const totalRevenue = transactions.reduce((acc, curr) => acc + curr.price, 0);
 
-    
+
         const chartData = [
           { name: 'Jan', sales: 4000 }, { name: 'Feb', sales: 3000 },
           { name: 'Mar', sales: 5000 }, { name: 'Apr', sales: 4500 },
@@ -262,6 +267,52 @@ async function run() {
         res.send(result);
       } catch (error) {
         res.status(500).send({ message: "Failed to remove from library" });
+      }
+    });
+
+
+// ==========================================
+// 5. STRIPE APIs
+// ========================================== 
+
+    // Stripe Checkout session
+    app.post('/api/create-checkout-session', async (req, res) => {
+      try {
+        const { book, userEmail, userName } = req.body;
+
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          mode: 'payment',
+          customer_email: userEmail,
+          line_items: [
+            {
+              price_data: {
+                currency: 'usd',
+                product_data: {
+                  name: book.title,
+                  images: [book.image],
+                  description: `By ${book.writerName}`,
+                },
+                unit_amount: Math.round(book.price * 100), 
+              },
+              quantity: 1,
+            },
+          ],
+          
+          success_url: `${process.env.CLIENT_URL}/dashboard/reader?session_id={CHECKOUT_SESSION_ID}&purchase=success`,
+          cancel_url: `${process.env.CLIENT_URL}/book/${book._id}`,
+          metadata: {
+            bookId: book._id.toString(),
+            title: book.title,
+            price: book.price.toString(),
+            writerEmail: book.writerEmail,
+            writerName: book.writerName
+          }
+        });
+
+        res.send({ url: session.url });
+      } catch (error) {
+        res.status(500).send({ message: error.message });
       }
     });
 
