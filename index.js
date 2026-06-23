@@ -271,9 +271,9 @@ async function run() {
     });
 
 
-// ==========================================
-// 5. STRIPE APIs
-// ========================================== 
+    // ==========================================
+    // 5. STRIPE APIs
+    // ========================================== 
 
     // Stripe Checkout session
     app.post('/api/create-checkout-session', async (req, res) => {
@@ -293,12 +293,12 @@ async function run() {
                   images: [book.image],
                   description: `By ${book.writerName}`,
                 },
-                unit_amount: Math.round(book.price * 100), 
+                unit_amount: Math.round(book.price * 100),
               },
               quantity: 1,
             },
           ],
-          
+
           success_url: `${process.env.CLIENT_URL}/dashboard/reader?session_id={CHECKOUT_SESSION_ID}&purchase=success`,
           cancel_url: `${process.env.CLIENT_URL}/book/${book._id}`,
           metadata: {
@@ -311,6 +311,48 @@ async function run() {
         });
 
         res.send({ url: session.url });
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
+    });
+
+
+    // stripe verify purchase
+    app.post('/api/reader/verify-purchase', async (req, res) => {
+      try {
+        const { sessionId } = req.body;
+
+        
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+        if (session.payment_status === 'paid') {
+          const { bookId, title, price, image, writerEmail, writerName } = session.metadata;
+          const userEmail = session.customer_email;
+
+          
+          const existingPurchase = await db.collection("purchases").findOne({ stripeSessionId: sessionId });
+
+          if (!existingPurchase) {
+            const purchaseData = {
+              bookId,
+              title,
+              price: parseFloat(price),
+              image,
+              writerEmail,
+              writerName,
+              userEmail,
+              date: new Date(),
+              stripeSessionId: sessionId 
+            };
+
+            await db.collection("purchases").insertOne(purchaseData);
+            return res.send({ success: true, message: "Purchase saved" });
+          }
+
+          return res.send({ success: true, message: "Already recorded" });
+        }
+
+        res.status(400).send({ message: "Payment not verified" });
       } catch (error) {
         res.status(500).send({ message: error.message });
       }
