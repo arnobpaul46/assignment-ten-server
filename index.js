@@ -2,6 +2,7 @@ const express = require('express');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken'); 
 require('dotenv').config();
 
 const app = express();
@@ -14,6 +15,23 @@ const client = new MongoClient(process.env.MONGODB_URI, {
 });
 
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+// ==========================================
+// JWT Middleware 
+// ==========================================
+const verifyToken = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    return res.status(401).send({ message: 'Unauthorized access' });
+  }
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ message: 'Unauthorized access' });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
 
 async function run() {
   try {
@@ -29,19 +47,25 @@ async function run() {
     console.log("✅ Fable Server: MongoDB Connected & APIs Ready!");
 
     // ==========================================
+    // 0. JWT Token Creation API
+    // ==========================================
+    app.post('/api/jwt', async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.JWT_SECRET, { expiresIn: '7d' });
+      res.send({ token });
+    });
+
+    // ==========================================
     // 1. PUBLIC & HOME PAGE APIs
     // ==========================================
-    
-    // Featured Books (Latest 6)
     app.get('/api/featured-books', async (req, res) => {
       const result = await allBooksCollection.find({ status: "Published" }).sort({ createdAt: -1 }).limit(6).toArray();
       res.send(result);
     });
 
-    // Top Writers (Based on sales count)
     app.get('/api/public/top-writers', async (req, res) => {
       const topWriters = await purchaseCollection.aggregate([
-        { $group: { _id: "$writerEmail", salesCount: { $sum: 1 }, name: { $first: "$writerName" } } },
+        { $group: { _id: "$writerEmail", salesCount: { $sum: 1 }, name: { $first: "$writerName" }, image: { $first: "$image" } } },
         { $sort: { salesCount: -1 } },
         { $limit: 3 }
       ]).toArray();
@@ -49,189 +73,134 @@ async function run() {
     });
 
     // ==========================================
-    // 2. BROWSE EBOOKS (Search, Filter, Sort, Pagination)
+    // 2. BROWSE EBOOKS (Search, Filter, Pagination)
     // ==========================================
     app.get('/api/reader/all-books', async (req, res) => {
       try {
-        const { search, genre, minPrice, maxPrice, sort, page = 1, limit = 8 } = req.query;
-        
+        const { search, genre, sort, page = 1, limit = 8, availability } = req.query;
         let query = { status: "Published" };
 
-        // Search by title or writer name
         if (search) {
           query.$or = [
             { title: { $regex: search, $options: 'i' } },
             { writerName: { $regex: search, $options: 'i' } }
           ];
         }
+        if (genre && genre !== "All") query.genre = genre;
 
-        
-        if (genre && genre !== "All") {
-          query.genre = genre;
-        }
-
-        
-        if (minPrice || maxPrice) {
-          query.price = {};
-          if (minPrice) query.price.$gte = parseFloat(minPrice);
-          if (maxPrice) query.price.$lte = parseFloat(maxPrice);
-        }
-
-        // Sorting logic
         let sortObj = {};
         if (sort === 'price-low') sortObj.price = 1;
         else if (sort === 'price-high') sortObj.price = -1;
-        else sortObj.createdAt = -1; 
+        else sortObj.createdAt = -1;
 
         const skip = (parseInt(page) - 1) * parseInt(limit);
-        
         const totalBooks = await allBooksCollection.countDocuments(query);
-        const books = await allBooksCollection.find(query)
-          .sort(sortObj)
-          .skip(skip)
-          .limit(parseInt(limit))
-          .toArray();
+        const books = await allBooksCollection.find(query).sort(sortObj).skip(skip).limit(parseInt(limit)).toArray();
 
-        res.send({
-          books,
-          totalBooks,
-          totalPages: Math.ceil(totalBooks / limit),
-          currentPage: parseInt(page)
-        });
-      } catch (error) {
-        res.status(500).send({ message: "Error fetching books" });
-      }
+        res.send({ books, totalBooks, totalPages: Math.ceil(totalBooks / limit), currentPage: parseInt(page) });
+      } catch (error) { res.status(500).send({ message: "Error" }); }
     });
 
     // ==========================================
-    // 3. ADMIN APIs & ANALYTICS
+    // 3. ADMIN APIs (verifyToken যোগ করা হয়েছে)
     // ==========================================
-    app.get('/api/admin/users', async (req, res) => {
-      const users = await userCollection.find().toArray();
-      res.send(users);
-    });
-
-    app.get('/api/admin/stats', async (req, res) => {
+    // ==========================================
+    // 3. ADMIN ANALYTICS (Real DB Calculation)
+    // ==========================================
+    app.get('/api/admin/stats', verifyToken, async (req, res) => {
       try {
+        
         const totalUsers = await userCollection.countDocuments();
         const totalBooks = await allBooksCollection.countDocuments();
-        const transactions = await purchaseCollection.find().toArray();
-        const totalRevenue = transactions.reduce((acc, curr) => acc + curr.price, 0);
 
-        // Dynamic Chart: Ebooks by Genre (Pie Chart Data)
+        
+        const revenueData = await purchaseCollection.aggregate([
+          { $group: { _id: null, total: { $sum: "$price" } } }
+        ]).toArray();
+        const totalRevenue = revenueData.length > 0 ? revenueData[0].total : 0;
+
+        const chartData = await purchaseCollection.aggregate([
+          {
+            $group: {
+              _id: { $month: "$date" }, 
+              sales: { $sum: "$price" }
+            }
+          },
+          { $sort: { "_id": 1 } }, 
+          {
+            $project: {
+              name: {
+                $arrayElemAt: [
+                  ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+                  "$_id"
+                ]
+              },
+              sales: 1,
+              _id: 0
+            }
+          }
+        ]).toArray();
+
+        
         const genreStats = await allBooksCollection.aggregate([
           { $group: { _id: "$genre", value: { $sum: 1 } } },
           { $project: { name: "$_id", value: 1, _id: 0 } }
         ]).toArray();
 
-        // Monthly Sales (Simple mockup based on data, in real app use aggregate $month)
-        const chartData = [
-          { name: 'Jan', sales: 4000 }, { name: 'Feb', sales: 3000 },
-          { name: 'Mar', sales: 5000 }, { name: 'Apr', sales: 4500 },
-          { name: 'May', sales: 6000 }, { name: 'Jun', sales: 7000 },
-        ];
+        
+        const topWriters = await purchaseCollection.aggregate([
+          { $group: { _id: "$writerEmail", salesCount: { $sum: 1 }, name: { $first: "$writerName" } } },
+          { $sort: { salesCount: -1 } },
+          { $limit: 3 }
+        ]).toArray();
 
-        res.send({ totalUsers, totalBooks, totalRevenue, chartData, genreStats });
+        res.send({
+          totalUsers,
+          totalBooks,
+          totalRevenue,
+          chartData: chartData.length > 0 ? chartData : [{ name: 'No Data', sales: 0 }],
+          genreStats,
+          topWriters
+        });
+
       } catch (error) {
-        res.status(500).send({ message: "Stats error" });
+        console.error("Stats API Error:", error);
+        res.status(500).send({ message: "Internal Server Error" });
       }
     });
-
-    // Admin: Roles, Block, Delete, Transactions 
-    app.post('/api/admin/add-user', async (req, res) => {
-      try {
-        const { name, email, password, role } = req.body;
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = {
-          name, email, password: hashedPassword,
-          role: role || 'reader',
-          isBlocked: false,
-          emailVerified: true, image: "",
-          createdAt: new Date()
-        };
-        const result = await userCollection.insertOne(newUser);
-        res.send(result);
-      } catch (error) { res.status(500).send({ message: "Error adding user" }); }
-    });
-
-    app.delete('/api/admin/delete-user/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const result = await userCollection.deleteOne({ _id: new ObjectId(id) });
-        res.send(result);
-      } catch (error) { res.status(500).send({ message: "Invalid ID" }); }
-    });
-
-    app.patch('/api/admin/update-role/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const { newRole } = req.body;
-        const result = await userCollection.updateOne({ _id: new ObjectId(id) }, { $set: { role: newRole } });
-        res.send(result);
-      } catch (error) { res.status(500).send({ message: "Update failed" }); }
-    });
-
-    app.patch('/api/admin/toggle-block/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const { isBlocked } = req.body;
-        const result = await userCollection.updateOne({ _id: new ObjectId(id) }, { $set: { isBlocked: isBlocked } });
-        res.send(result);
-      } catch (error) { res.status(500).send({ message: "Blocking failed" }); }
-    });
-
-    app.get('/api/admin/all-books', async (req, res) => {
-      const books = await allBooksCollection.find().toArray();
-      res.send(books);
-    });
-
-    app.get('/api/admin/transactions', async (req, res) => {
-      const result = await purchaseCollection.find().toArray();
-      res.send(result);
-    });
-
     // ==========================================
     // 4. WRITER APIs 
     // ==========================================
-    app.post('/api/writer/add-book', async (req, res) => {
+    app.post('/api/writer/add-book', verifyToken, async (req, res) => {
       const book = { ...req.body, createdAt: new Date() };
       const result = await allBooksCollection.insertOne(book);
       res.send(result);
     });
 
-    app.get('/api/writer/my-books/:email', async (req, res) => {
+    app.get('/api/writer/my-books/:email', verifyToken, async (req, res) => {
       const result = await allBooksCollection.find({ writerEmail: req.params.email }).toArray();
       res.send(result);
     });
 
-    app.delete('/api/writer/delete-book/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const result = await allBooksCollection.deleteOne({ _id: new ObjectId(id) });
-        res.send(result);
-      } catch (error) { res.status(500).send({ message: "Delete failed" }); }
+    app.delete('/api/writer/delete-book/:id', verifyToken, async (req, res) => {
+      const result = await allBooksCollection.deleteOne({ _id: new ObjectId(req.params.id) });
+      res.send(result);
     });
 
-    app.patch('/api/writer/update-status/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const { status } = req.body;
-        const result = await allBooksCollection.updateOne({ _id: new ObjectId(id) }, { $set: { status: status } });
-        res.send(result);
-      } catch (error) { res.status(500).send({ message: "Status update failed" }); }
+    app.patch('/api/writer/update-status/:id', verifyToken, async (req, res) => {
+      const { status } = req.body;
+      const result = await allBooksCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { status: status } });
+      res.send(result);
     });
 
-    app.patch('/api/writer/update-book/:id', async (req, res) => {
-      try {
-        const id = req.params.id;
-        const updateData = req.body;
-        delete updateData._id;
-        const result = await allBooksCollection.updateOne({ _id: new ObjectId(id) }, { $set: updateData });
-        res.send(result);
-      } catch (error) { res.status(500).send({ message: "Book update failed" }); }
+    app.patch('/api/writer/update-book/:id', verifyToken, async (req, res) => {
+      const updateData = req.body;
+      delete updateData._id;
+      const result = await allBooksCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: updateData });
+      res.send(result);
     });
 
-    app.get('/api/writer/sales/:email', async (req, res) => {
+    app.get('/api/writer/sales/:email', verifyToken, async (req, res) => {
       const result = await purchaseCollection.find({ writerEmail: req.params.email }).toArray();
       res.send(result);
     });
@@ -239,27 +208,23 @@ async function run() {
     // ==========================================
     // 5. READER & STRIPE APIs 
     // ==========================================
-    app.patch('/api/user/update-profile/:email', async (req, res) => {
-      try {
-        const { name, image } = req.body;
-        const result = await userCollection.updateOne({ email: req.params.email }, { $set: { name, image } });
-        res.send(result);
-      } catch (error) { res.status(500).send({ message: "Profile update failed" }); }
+    app.patch('/api/user/update-profile/:email', verifyToken, async (req, res) => {
+      const { name, image } = req.body;
+      const result = await userCollection.updateOne({ email: req.params.email }, { $set: { name, image } });
+      res.send(result);
     });
 
     app.get('/api/reader/book/:id', async (req, res) => {
-      try {
-        const result = await allBooksCollection.findOne({ _id: new ObjectId(req.params.id) });
-        res.send(result);
-      } catch (error) { res.status(500).send({ message: "Book not found" }); }
+      const result = await allBooksCollection.findOne({ _id: new ObjectId(req.params.id) });
+      res.send(result);
     });
 
-    app.post('/api/reader/purchase', async (req, res) => {
+    app.post('/api/reader/purchase', verifyToken, async (req, res) => {
       const result = await purchaseCollection.insertOne(req.body);
       res.send(result);
     });
 
-    app.post('/api/reader/toggle-bookmark', async (req, res) => {
+    app.post('/api/reader/toggle-bookmark', verifyToken, async (req, res) => {
       const { bookId, userEmail, title, image, author } = req.body;
       const exists = await bookmarkCollection.findOne({ bookId, userEmail });
       if (exists) {
@@ -270,12 +235,12 @@ async function run() {
       res.send({ message: "Added", status: true });
     });
 
-    app.get('/api/reader/my-library/:email', async (req, res) => {
+    app.get('/api/reader/my-library/:email', verifyToken, async (req, res) => {
       const result = await purchaseCollection.find({ userEmail: req.params.email }).toArray();
       res.send(result);
     });
 
-    app.get('/api/reader/my-bookmarks/:email', async (req, res) => {
+    app.get('/api/reader/my-bookmarks/:email', verifyToken, async (req, res) => {
       const result = await bookmarkCollection.find({ userEmail: req.params.email }).toArray();
       res.send(result);
     });
@@ -286,15 +251,13 @@ async function run() {
       res.send({ isPurchased: !!result });
     });
 
-    app.delete('/api/reader/delete-purchase/:id', async (req, res) => {
-      try {
-        const result = await purchaseCollection.deleteOne({ _id: new ObjectId(req.params.id) });
-        res.send(result);
-      } catch (error) { res.status(500).send({ message: "Failed to remove" }); }
+    app.delete('/api/reader/delete-purchase/:id', verifyToken, async (req, res) => {
+      const result = await purchaseCollection.deleteOne({ _id: new ObjectId(req.params.id) });
+      res.send(result);
     });
 
     // STRIPE
-    app.post('/api/create-checkout-session', async (req, res) => {
+    app.post('/api/create-checkout-session', verifyToken, async (req, res) => {
       try {
         const { book, userEmail, userName } = req.body;
         const session = await stripe.checkout.sessions.create({
@@ -317,7 +280,7 @@ async function run() {
       } catch (error) { res.status(500).send({ message: error.message }); }
     });
 
-    app.post('/api/reader/verify-purchase', async (req, res) => {
+    app.post('/api/reader/verify-purchase', verifyToken, async (req, res) => {
       try {
         const { sessionId } = req.body;
         const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -341,4 +304,4 @@ async function run() {
 run().catch(console.dir);
 app.get('/', (req, res) => { res.send('Fable Server is running smoothly...'); });
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(` Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
