@@ -2,7 +2,7 @@ const express = require('express');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken'); 
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const app = express();
@@ -64,12 +64,38 @@ async function run() {
     });
 
     app.get('/api/public/top-writers', async (req, res) => {
-      const topWriters = await purchaseCollection.aggregate([
-        { $group: { _id: "$writerEmail", salesCount: { $sum: 1 }, name: { $first: "$writerName" }, image: { $first: "$image" } } },
-        { $sort: { salesCount: -1 } },
-        { $limit: 3 }
-      ]).toArray();
-      res.send(topWriters);
+      try {
+        const topWriters = await purchaseCollection.aggregate([
+          {
+            $group: {
+              _id: "$writerEmail",
+              salesCount: { $sum: 1 },
+              name: { $first: "$writerName" }
+            }
+          },
+          {
+            $lookup: {
+              from: "user",         
+              localField: "_id",    
+              foreignField: "email", 
+              as: "writerDetails"
+            }
+          },
+          {
+            $project: {
+              name: 1,
+              salesCount: 1,
+              
+              image: { $arrayElemAt: ["$writerDetails.image", 0] }
+            }
+          },
+          { $sort: { salesCount: -1 } },
+          { $limit: 4 }
+        ]).toArray();
+        res.send(topWriters);
+      } catch (error) {
+        res.status(500).send({ message: "Error fetching top writers" });
+      }
     });
 
     // ==========================================
@@ -102,52 +128,38 @@ async function run() {
     });
 
     // ==========================================
-    // 3. ADMIN APIs (verifyToken যোগ করা হয়েছে)
-    // ==========================================
-    // ==========================================
-    // 3. ADMIN ANALYTICS (Real DB Calculation)
+    // 3. ADMIN ANALYTICS (FIXED BUGS INSIDE YOUR CODE)
     // ==========================================
     app.get('/api/admin/stats', verifyToken, async (req, res) => {
       try {
-        
         const totalUsers = await userCollection.countDocuments();
         const totalBooks = await allBooksCollection.countDocuments();
+        const transactions = await purchaseCollection.find().toArray();
+        const totalRevenue = transactions.reduce((acc, curr) => acc + (parseFloat(curr.price) || 0), 0);
 
-        
-        const revenueData = await purchaseCollection.aggregate([
-          { $group: { _id: null, total: { $sum: "$price" } } }
-        ]).toArray();
-        const totalRevenue = revenueData.length > 0 ? revenueData[0].total : 0;
-
-        const chartData = await purchaseCollection.aggregate([
+        // ১. মাস অনুযায়ী গ্রুপিং লজিক ফিক্স করা হয়েছে ($toDate যোগ করা হয়েছে)
+        const rawChartData = await purchaseCollection.aggregate([
           {
             $group: {
-              _id: { $month: "$date" }, 
+              _id: { $month: { $toDate: "$date" } },
               sales: { $sum: "$price" }
             }
           },
-          { $sort: { "_id": 1 } }, 
-          {
-            $project: {
-              name: {
-                $arrayElemAt: [
-                  ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-                  "$_id"
-                ]
-              },
-              sales: 1,
-              _id: 0
-            }
-          }
+          { $sort: { "_id": 1 } }
         ]).toArray();
 
         
+        const monthNames = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const chartData = rawChartData.map(item => ({
+          name: monthNames[item._id] || 'Unknown',
+          sales: item.sales
+        }));
+
         const genreStats = await allBooksCollection.aggregate([
           { $group: { _id: "$genre", value: { $sum: 1 } } },
           { $project: { name: "$_id", value: 1, _id: 0 } }
         ]).toArray();
 
-        
         const topWriters = await purchaseCollection.aggregate([
           { $group: { _id: "$writerEmail", salesCount: { $sum: 1 }, name: { $first: "$writerName" } } },
           { $sort: { salesCount: -1 } },
@@ -155,12 +167,9 @@ async function run() {
         ]).toArray();
 
         res.send({
-          totalUsers,
-          totalBooks,
-          totalRevenue,
+          totalUsers, totalBooks, totalRevenue,
           chartData: chartData.length > 0 ? chartData : [{ name: 'No Data', sales: 0 }],
-          genreStats,
-          topWriters
+          genreStats, topWriters
         });
 
       } catch (error) {
@@ -168,6 +177,7 @@ async function run() {
         res.status(500).send({ message: "Internal Server Error" });
       }
     });
+
     // ==========================================
     // 4. WRITER APIs 
     // ==========================================
@@ -214,9 +224,12 @@ async function run() {
       res.send(result);
     });
 
+    
     app.get('/api/reader/book/:id', async (req, res) => {
-      const result = await allBooksCollection.findOne({ _id: new ObjectId(req.params.id) });
-      res.send(result);
+      try {
+        const result = await allBooksCollection.findOne({ _id: new ObjectId(req.params.id) });
+        res.send(result);
+      } catch (err) { res.status(404).send({ message: "Not found" }); }
     });
 
     app.post('/api/reader/purchase', verifyToken, async (req, res) => {
@@ -296,6 +309,18 @@ async function run() {
         }
         res.status(400).send({ message: "Payment not verified" });
       } catch (error) { res.status(500).send({ message: error.message }); }
+    });
+
+    // --- Admin APIs (Existing) ---
+    app.get('/api/admin/users', verifyToken, async (req, res) => res.send(await userCollection.find().toArray()));
+    app.get('/api/admin/transactions', verifyToken, async (req, res) => res.send(await purchaseCollection.find().toArray()));
+    app.get('/api/admin/all-books', verifyToken, async (req, res) => res.send(await allBooksCollection.find().toArray()));
+    app.patch('/api/admin/update-role/:id', verifyToken, async (req, res) => res.send(await userCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { role: req.body.newRole } })));
+    app.patch('/api/admin/toggle-block/:id', verifyToken, async (req, res) => res.send(await userCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { isBlocked: req.body.isBlocked } })));
+    app.post('/api/admin/add-user', verifyToken, async (req, res) => {
+      const { name, email, password, role } = req.body;
+      const hashedPassword = await bcrypt.hash(password, 10);
+      res.send(await userCollection.insertOne({ name, email, password: hashedPassword, role: role || 'reader', isBlocked: false, emailVerified: true, createdAt: new Date() }));
     });
 
   } catch (error) { console.error(" Connection Error:", error); }
