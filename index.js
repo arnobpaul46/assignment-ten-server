@@ -75,9 +75,9 @@ async function run() {
           },
           {
             $lookup: {
-              from: "user",         
-              localField: "_id",    
-              foreignField: "email", 
+              from: "user",
+              localField: "_id",
+              foreignField: "email",
               as: "writerDetails"
             }
           },
@@ -85,7 +85,7 @@ async function run() {
             $project: {
               name: 1,
               salesCount: 1,
-              
+
               image: { $arrayElemAt: ["$writerDetails.image", 0] }
             }
           },
@@ -137,7 +137,7 @@ async function run() {
         const transactions = await purchaseCollection.find().toArray();
         const totalRevenue = transactions.reduce((acc, curr) => acc + (parseFloat(curr.price) || 0), 0);
 
-        
+
         const rawChartData = await purchaseCollection.aggregate([
           {
             $group: {
@@ -148,7 +148,7 @@ async function run() {
           { $sort: { "_id": 1 } }
         ]).toArray();
 
-        
+
         const monthNames = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         const chartData = rawChartData.map(item => ({
           name: monthNames[item._id] || 'Unknown',
@@ -215,6 +215,53 @@ async function run() {
       res.send(result);
     });
 
+    // writer verifaction
+    app.post('/api/create-verification-session', async (req, res) => {
+      try {
+        const { userEmail } = req.body;
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          mode: 'payment',
+          customer_email: userEmail,
+          line_items: [{
+            price_data: {
+              currency: 'usd',
+              product_data: { name: "Author Verification Fee", description: "One-time fee to unlock publishing rights on Fable" },
+              unit_amount: 2000,
+            },
+            quantity: 1,
+          }],
+
+          success_url: `${process.env.CLIENT_URL}/dashboard/writer?tab=add-ebook&verify=success`,
+          cancel_url: `${process.env.CLIENT_URL}/dashboard/writer?tab=add-ebook`,
+        });
+        res.send({ url: session.url });
+      } catch (error) { res.status(500).send({ message: error.message }); }
+    });
+
+    app.patch('/api/writer/verify-account/:email', verifyToken, async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        await userCollection.updateOne(
+          { email: email },
+          { $set: { isVerified: true } }
+        );
+        const verificationTransaction = {
+          userEmail: email,
+          title: "Author Verification Fee",
+          price: 20.00,
+          date: new Date(),
+          type: "verification"
+        };
+        await purchaseCollection.insertOne(verificationTransaction);
+
+        res.send({ success: true });
+      } catch (error) {
+        res.status(500).send({ message: "Update failed" });
+      }
+    });
+
     // ==========================================
     // 5. READER & STRIPE APIs 
     // ==========================================
@@ -224,7 +271,7 @@ async function run() {
       res.send(result);
     });
 
-    
+
     app.get('/api/reader/book/:id', async (req, res) => {
       try {
         const result = await allBooksCollection.findOne({ _id: new ObjectId(req.params.id) });
@@ -287,7 +334,7 @@ async function run() {
           }],
           success_url: `${process.env.CLIENT_URL}/dashboard/reader?session_id={CHECKOUT_SESSION_ID}&purchase=success`,
           cancel_url: `${process.env.CLIENT_URL}/book/${book._id}`,
-          metadata: { bookId: book._id.toString(), title: book.title, price: book.price.toString(),image: book.image, writerEmail: book.writerEmail, writerName: book.writerName }
+          metadata: { bookId: book._id.toString(), title: book.title, price: book.price.toString(), image: book.image, writerEmail: book.writerEmail, writerName: book.writerName }
         });
         res.send({ url: session.url });
       } catch (error) { res.status(500).send({ message: error.message }); }
