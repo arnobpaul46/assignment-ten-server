@@ -137,7 +137,7 @@ async function run() {
         const transactions = await purchaseCollection.find().toArray();
         const totalRevenue = transactions.reduce((acc, curr) => acc + (parseFloat(curr.price) || 0), 0);
 
-        // ১. মাস অনুযায়ী গ্রুপিং লজিক ফিক্স করা হয়েছে ($toDate যোগ করা হয়েছে)
+        
         const rawChartData = await purchaseCollection.aggregate([
           {
             $group: {
@@ -287,7 +287,7 @@ async function run() {
           }],
           success_url: `${process.env.CLIENT_URL}/dashboard/reader?session_id={CHECKOUT_SESSION_ID}&purchase=success`,
           cancel_url: `${process.env.CLIENT_URL}/book/${book._id}`,
-          metadata: { bookId: book._id.toString(), title: book.title, price: book.price.toString(), writerEmail: book.writerEmail, writerName: book.writerName }
+          metadata: { bookId: book._id.toString(), title: book.title, price: book.price.toString(),image: book.image, writerEmail: book.writerEmail, writerName: book.writerName }
         });
         res.send({ url: session.url });
       } catch (error) { res.status(500).send({ message: error.message }); }
@@ -302,7 +302,7 @@ async function run() {
           const userEmail = session.customer_email;
           const existingPurchase = await purchaseCollection.findOne({ stripeSessionId: sessionId });
           if (!existingPurchase) {
-            await purchaseCollection.insertOne({ bookId, title, price: parseFloat(price), image, writerEmail, writerName, userEmail, date: new Date(), stripeSessionId: sessionId });
+            await purchaseCollection.insertOne({ bookId, title, price: parseFloat(price), image: image, writerEmail, writerName, userEmail, date: new Date(), stripeSessionId: sessionId });
             return res.send({ success: true, message: "Purchase saved" });
           }
           return res.send({ success: true, message: "Already recorded" });
@@ -313,10 +313,15 @@ async function run() {
 
     // --- Admin APIs (Existing) ---
     app.get('/api/admin/users', verifyToken, async (req, res) => res.send(await userCollection.find().toArray()));
+
     app.get('/api/admin/transactions', verifyToken, async (req, res) => res.send(await purchaseCollection.find().toArray()));
+
     app.get('/api/admin/all-books', verifyToken, async (req, res) => res.send(await allBooksCollection.find().toArray()));
+
     app.patch('/api/admin/update-role/:id', verifyToken, async (req, res) => res.send(await userCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { role: req.body.newRole } })));
+
     app.patch('/api/admin/toggle-block/:id', verifyToken, async (req, res) => res.send(await userCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { isBlocked: req.body.isBlocked } })));
+
     app.post('/api/admin/add-user', verifyToken, async (req, res) => {
       const { name, email, password, role } = req.body;
       const hashedPassword = await bcrypt.hash(password, 10);
