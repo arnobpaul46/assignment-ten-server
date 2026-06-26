@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Client (গ্লোবাল)
+// MongoDB Client 
 const client = new MongoClient(process.env.MONGODB_URI, {
   serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true }
 });
@@ -84,7 +84,7 @@ app.get('/api/public/top-writers', async (req, res) => {
         }
       },
       { $sort: { salesCount: -1 } },
-      { $limit: 4 }
+      { $limit: 3 }
     ]).toArray();
     res.send(topWriters);
   } catch (error) {
